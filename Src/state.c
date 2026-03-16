@@ -14,7 +14,7 @@ const char* AlarmStateStrings[] = {
 };
 
 volatile uint16_t drop_count = 0;          // 中断计数
-volatile uint16_t last_command_time = 0;   // 上次收信时间
+volatile uint16_t xLastCmdTime = 0;        // 上次收信时间
 volatile float current_speed;              // 当前流速
 volatile SystemState_t system_state;       // 系统状态
 volatile AlarmState_t alarm_state;         // 报警状态

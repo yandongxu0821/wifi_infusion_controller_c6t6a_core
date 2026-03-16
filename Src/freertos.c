@@ -60,7 +60,6 @@
 
 extern uint8_t g_uart_rx_byte;
 extern volatile float current_speed;
-extern volatile unsigned int target_speed;
 extern UART_HandleTypeDef huart1;
 
 /* USER CODE END Variables */
@@ -128,7 +127,6 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-	SSD1315_Init();
   
   // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   // HAL_Delay(500);
@@ -140,6 +138,7 @@ void MX_FREERTOS_Init(void) {
 
 	BH1750_Init();
   BH1750_Start(0x10);
+	SSD1315_Init();
 
   // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   // HAL_Delay(500);
@@ -221,7 +220,7 @@ void StartCommTask(void *argument)
   const TickType_t xFrequency = pdMS_TO_TICKS(REPORT_INTERVAL);
   xLastWakeTime = xTaskGetTickCount();
 
-  TickType_t last_command_time = 0;  // 用于检查超时
+  TickType_t xLastCmdTime = 0;  // 用于检查超时
   const TickType_t timeout = pdMS_TO_TICKS(UART_TIMEOUT);  // 超时8秒
 
   /* Infinite loop */
@@ -231,16 +230,16 @@ void StartCommTask(void *argument)
     int len = HAL_UART_Receive(&huart1, (uint8_t *)received_data, sizeof(received_data), 100);
     if (len > 0) {
       ParseCommand(received_data);
-      last_command_time = xTaskGetTickCount();  // 更新命令解析时间
+      xLastCmdTime = xTaskGetTickCount();  // 更新命令解析时间
     }
 
     // 检查是否超时
-    if (xTaskGetTickCount() - last_command_time > timeout) {
+    if (xTaskGetTickCount() - xLastCmdTime > timeout) {
       // 超过8秒，拉低EspRst端口，重启ESP8266
       HAL_GPIO_WritePin(EspRst_GPIO_Port, EspRst_Pin, GPIO_PIN_RESET); // 拉低复位端口
       osDelay(100);  // 延迟足够时间让ESP重启
       HAL_GPIO_WritePin(EspRst_GPIO_Port, EspRst_Pin, GPIO_PIN_SET); // 释放复位端口
-      last_command_time = xTaskGetTickCount(); // 重置计时
+      xLastCmdTime = xTaskGetTickCount(); // 重置计时
     }
 
     if (alarm_state != ALARM_NONE) {
@@ -255,6 +254,7 @@ void StartCommTask(void *argument)
 
     osDelay(100);
   }
+  /* USER CODE END StartCommTask */
 }
 
 /* USER CODE BEGIN Header_StartControlTask */
@@ -460,6 +460,7 @@ void ParseCommand(char *command) {
   if (first == 'H') {   // Heartbeat
     if (command[1] == 'B' && (command[2] == '\0' || command[2] == '\r' || command[2] == '\n')) {
       SendDataToESP("ACK\n");
+      goto clear;
     }
   }
   else if (first == 'C') {   // Command
@@ -502,6 +503,9 @@ void SendStatus(void) {
     SendDataToESP(status_message);
     return;
   }
+  
+  snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(system_state) );
+  SendDataToESP(status_message);
 
   snprintf(status_message, sizeof(status_message), "SPEED,%.2f\n", current_speed );
   SendDataToESP(status_message);

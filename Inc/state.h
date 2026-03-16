@@ -23,7 +23,7 @@ extern const char* SystemStateStrings[];
 extern const char* AlarmStateStrings[];
 
 extern volatile uint16_t drop_count;
-extern volatile uint16_t last_command_time;
+extern volatile uint16_t xLastCmdTime;
 extern volatile float current_speed;
 extern volatile SystemState_t system_state;
 extern volatile AlarmState_t alarm_state;
