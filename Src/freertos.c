@@ -288,8 +288,19 @@ void StartControlTask(void *argument)
     {
       HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
     }
-  }
 
+    if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_SET) {
+      osDelay(20);
+      if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_SET) {
+        if (xSystemState == IDLE) {
+          xSystemState = WORKING;
+        }
+        else {
+          xSystemState = IDLE;
+        }
+      }
+    }
+  }
   /* USER CODE END StartControlTask */
 }
 
@@ -321,10 +332,10 @@ void StartDisplayTask(void *argument)
     // }
     snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(xSystemState));
     SSD1315_ShowString(0, 0, (char*)buffer);
-    // snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);
-    // SSD1315_ShowString(0, 4, (char*)buffer);
-    snprintf((char*)buffer, sizeof(buffer), "Count: %d", xDropCount);
+    snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);
     SSD1315_ShowString(0, 4, (char*)buffer);
+    // snprintf((char*)buffer, sizeof(buffer), "Count: %d", xDropCount);
+    // SSD1315_ShowString(0, 4, (char*)buffer);
     snprintf((char*)buffer, sizeof(buffer), "Alarm: %s", Get_Alarm_String(xAlarmState));
     SSD1315_ShowString(0, 2, (char*)buffer);
     SSD1315_Update();
