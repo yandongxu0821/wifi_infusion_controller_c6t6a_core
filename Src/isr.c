@@ -32,6 +32,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+  HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   if (GPIO_Pin == PhotoelectricSensor_Pin)
   {
     drop_count++;

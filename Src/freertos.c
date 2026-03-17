@@ -127,36 +127,22 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-  
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-
 	BH1750_Init();
   BH1750_Start(0x10);
 	SSD1315_Init();
-
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  // HAL_Delay(500);
-  // HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
 
   SSD1315_ShowString(0, 0, "System Init");
   SSD1315_ShowString(0, 2, "WiFi Connecting");
   SSD1315_ShowString(0, 4, "......");
   SSD1315_Update();
+	
   System_Handshake(&huart1);
+	
   SSD1315_Clear();
   SSD1315_ShowString(0, 0, "System Init");
   SSD1315_ShowString(0, 2, "WiFi Connected");
   SSD1315_Update();
+	
   HAL_Delay(1000);
   /* USER CODE END Init */
 
@@ -320,16 +306,16 @@ void StartDisplayTask(void *argument)
     SSD1315_Clear();
     uint16_t luxValue = BH1750_Read();
     char buffer[20];
-    // {
-    //   float lux = luxValue / 1.2; // Convert raw value to lux
-    //   sprintf((char*)buffer, "Raw: %u", luxValue);
-    //   snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
-    //   SSD1315_ShowString(0, 6, (char*)buffer);
-    // }
     {
-      snprintf((char*)buffer, sizeof(buffer), "Raw:   %d", luxValue);
+      float lux = luxValue / 1.2; // Convert raw value to lux
+      sprintf((char*)buffer, "Raw: %u", luxValue);
+      snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
       SSD1315_ShowString(0, 6, (char*)buffer);
     }
+    // {
+    //   snprintf((char*)buffer, sizeof(buffer), "Raw:   %d", luxValue);
+    //   SSD1315_ShowString(0, 6, (char*)buffer);
+    // }
     snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(system_state));
     SSD1315_ShowString(0, 0, (char*)buffer);
     snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", current_speed);
@@ -338,7 +324,6 @@ void StartDisplayTask(void *argument)
     SSD1315_ShowString(0, 2, (char*)buffer);
     SSD1315_Update();
 
-    HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
     osDelay(500);
   }
   /* USER CODE END StartDisplayTask */
