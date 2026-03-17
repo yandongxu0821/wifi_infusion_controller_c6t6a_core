@@ -13,23 +13,23 @@ const char* AlarmStateStrings[] = {
   "FAST"
 };
 
-volatile uint16_t drop_count = 0;          // 中断计数
+volatile uint16_t xDropCount = 0;          // 中断计数
 volatile uint16_t xLastCmdTime = 0;        // 上次收信时间
-volatile float current_speed;              // 当前流速
-volatile SystemState_t system_state;       // 系统状态
-volatile AlarmState_t alarm_state;         // 报警状态
-volatile AlarmState_t last_alarm_state;    // 上次报警状态
+volatile float xCurrentSpeed;              // 当前流速
+volatile SystemState_t xSystemState;       // 系统状态
+volatile AlarmState_t xAlarmState;         // 报警状态
+volatile AlarmState_t xLastAlarmState;    // 上次报警状态
 
-const char* Get_State_String(SystemState_t state) {
-  if (state < STATE_MAX) {
-    return SystemStateStrings[state];
+const char* Get_State_String(SystemState_t xState) {
+  if (xState < STATE_MAX) {
+    return SystemStateStrings[xState];
   }
   return "UNKNOWN";
 }
 
-const char* Get_Alarm_String(AlarmState_t state) {
-  if (state < ALARM_MAX) {
-    return AlarmStateStrings[state];
+const char* Get_Alarm_String(AlarmState_t xState) {
+  if (xState < ALARM_MAX) {
+    return AlarmStateStrings[xState];
   }
   return "UNKNOWN";
 }

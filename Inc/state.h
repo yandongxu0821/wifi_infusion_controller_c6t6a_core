@@ -22,12 +22,12 @@ typedef enum {
 extern const char* SystemStateStrings[];
 extern const char* AlarmStateStrings[];
 
-extern volatile uint16_t drop_count;
+extern volatile uint16_t xDropCount;
 extern volatile uint16_t xLastCmdTime;
-extern volatile float current_speed;
-extern volatile SystemState_t system_state;
-extern volatile AlarmState_t alarm_state;
-extern volatile AlarmState_t last_alarm_state;
+extern volatile float xCurrentSpeed;
+extern volatile SystemState_t xSystemState;
+extern volatile AlarmState_t xAlarmState;
+extern volatile AlarmState_t xLastAlarmState;
 
 const char* Get_State_String(SystemState_t state);
 const char* Get_Alarm_String(AlarmState_t state);

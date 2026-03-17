@@ -10,7 +10,7 @@
 extern osThreadId_t CommTaskHandle; 
 
 // 如果有全局缓冲区，也可以在这里声明
-extern uint8_t g_uart_rx_byte;
+extern uint8_t xGlobalUartRxByte;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 // void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);

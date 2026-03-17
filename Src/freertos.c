@@ -58,8 +58,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 
-extern uint8_t g_uart_rx_byte;
-extern volatile float current_speed;
+extern uint8_t xGlobalUartRxByte;
+extern volatile float xCurrentSpeed;
 extern UART_HandleTypeDef huart1;
 
 /* USER CODE END Variables */
@@ -207,7 +207,7 @@ void StartCommTask(void *argument)
   xLastWakeTime = xTaskGetTickCount();
 
   TickType_t xLastCmdTime = 0;  // 用于检查超时
-  const TickType_t timeout = pdMS_TO_TICKS(UART_TIMEOUT);  // 超时8秒
+  const TickType_t timeout = pdMS_TO_TICKS(UART_TIMEOUT);  // 超时 UART_TIMEOUT 秒
 
   /* Infinite loop */
   for(;;)
@@ -221,15 +221,17 @@ void StartCommTask(void *argument)
 
     // 检查是否超时
     if (xTaskGetTickCount() - xLastCmdTime > timeout) {
-      // 超过8秒，拉低EspRst端口，重启ESP8266
+      // 超过 UART_TIMEOUT 秒，拉低 EspRst 端口重启 ESP8266
       HAL_GPIO_WritePin(EspRst_GPIO_Port, EspRst_Pin, GPIO_PIN_RESET); // 拉低复位端口
-      osDelay(100);  // 延迟足够时间让ESP重启
+      osDelay(100);  // 延迟足够时间让 ESP 重启
       HAL_GPIO_WritePin(EspRst_GPIO_Port, EspRst_Pin, GPIO_PIN_SET); // 释放复位端口
       xLastCmdTime = xTaskGetTickCount(); // 重置计时
     }
 
-    if (alarm_state != ALARM_NONE) {
+    // ? alarm变化立即发送一次
+    if (xAlarmState != xLastAlarmState) {
       SendStatus();
+      xLastAlarmState = xAlarmState;
       xLastWakeTime = xTaskGetTickCount();
     }
 
@@ -259,9 +261,9 @@ void StartControlTask(void *argument)
   for(;;)
   {
     osDelay(100);
-    if (system_state == WORKING)
+    if (xSystemState == WORKING)
     {
-      switch(alarm_state)
+      switch(xAlarmState)
       {
         case ALARM_COMPLETE:
           HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_SET);
@@ -281,7 +283,7 @@ void StartControlTask(void *argument)
           break;
       }
     }
-    else // system_state == IDLE
+    else // xSystemState == IDLE
     {
       HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
     }
@@ -316,11 +318,11 @@ void StartDisplayTask(void *argument)
     //   snprintf((char*)buffer, sizeof(buffer), "Raw:   %d", luxValue);
     //   SSD1315_ShowString(0, 6, (char*)buffer);
     // }
-    snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(system_state));
+    snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(xSystemState));
     SSD1315_ShowString(0, 0, (char*)buffer);
-    snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", current_speed);
+    snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);
     SSD1315_ShowString(0, 4, (char*)buffer);
-    snprintf((char*)buffer, sizeof(buffer), "Alarm: %s", Get_Alarm_String(alarm_state));
+    snprintf((char*)buffer, sizeof(buffer), "Alarm: %s", Get_Alarm_String(xAlarmState));
     SSD1315_ShowString(0, 2, (char*)buffer);
     SSD1315_Update();
 
@@ -356,12 +358,12 @@ void StartFlowDetectTask(void *argument)
   {
     osDelay(10);
 
-    if (system_state == IDLE)
+    if (xSystemState == IDLE)
     {
-      drop_count = 0;
+      xDropCount = 0;
       sum = 0;
       for (int i = 0; i < 3; i++) sec_count[i] = 0;
-      alarm_state = ALARM_NONE;
+      xAlarmState = ALARM_NONE;
 
       continue;
     }
@@ -371,8 +373,8 @@ void StartFlowDetectTask(void *argument)
       uint16_t new_count;
 
       taskENTER_CRITICAL();
-      new_count = drop_count;
-      drop_count = 0;
+      new_count = xDropCount;
+      xDropCount = 0;
       taskEXIT_CRITICAL();
 
       if (new_count > 0)
@@ -387,28 +389,28 @@ void StartFlowDetectTask(void *argument)
       index++;
       if (index >= 3) index = 0;
 
-      current_speed = (float)sum / 3.0f;
+      xCurrentSpeed = (float)sum / 3.0f;
 
       last_speed_tick = xTaskGetTickCount();
     }
 
     if (xTaskGetTickCount() - last_drop_tick >= timeout)
     {
-      alarm_state = ALARM_COMPLETE;
+      xAlarmState = ALARM_COMPLETE;
     }
     else
     {
-      if (current_speed > 5.0f)
+      if (xCurrentSpeed > 5.0f)
       {
-        alarm_state = ALARM_FAST;
+        xAlarmState = ALARM_FAST;
       }
-      else if (current_speed < 0.5f && current_speed > 0.0f)
+      else if (xCurrentSpeed < 0.5f && xCurrentSpeed > 0.0f)
       {
-        alarm_state = ALARM_LOW;
+        xAlarmState = ALARM_LOW;
       }
       else
       {
-        alarm_state = ALARM_NONE;
+        xAlarmState = ALARM_NONE;
       }
     }
 
@@ -457,7 +459,7 @@ void ParseCommand(char *command) {
     if (strncmp(cmd, "START", 5) == 0) {
       char n = cmd[5];
       if (n == '\0' || n == '\r' || n == '\n') {
-        system_state = WORKING;
+        xSystemState = WORKING;
         SendDataToESP("ACK\n");
         goto clear;
       }
@@ -465,7 +467,7 @@ void ParseCommand(char *command) {
     else if (strncmp(cmd, "STOP", 4) == 0) {
       char n = cmd[4];
       if (n == '\0' || n == '\r' || n == '\n') {
-        system_state = IDLE;
+        xSystemState = IDLE;
         SendDataToESP("ACK\n");
         goto clear;
       }
@@ -483,20 +485,20 @@ clear:
 void SendStatus(void) {
   char status_message[20];
 
-  if (system_state == IDLE) {   // Only report state when idle, to reduce unnecessary updates
-    snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(system_state) );
+  if (xSystemState == IDLE) {   // Only report state when idle, to reduce unnecessary updates
+    snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(xSystemState) );
     SendDataToESP(status_message);
     return;
   }
   
-  snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(system_state) );
+  snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(xSystemState) );
   SendDataToESP(status_message);
 
-  snprintf(status_message, sizeof(status_message), "SPEED,%.2f\n", current_speed );
+  snprintf(status_message, sizeof(status_message), "SPEED,%.2f\n", xCurrentSpeed );
   SendDataToESP(status_message);
 
-  if (alarm_state != ALARM_NONE) {   // Only report alarm when it's active, to reduce unnecessary updates
-    snprintf(status_message, sizeof(status_message), "ALARM,%s\n", Get_Alarm_String(alarm_state) );
+  if (xAlarmState != ALARM_NONE) {   // Only report alarm when it's active, to reduce unnecessary updates
+    snprintf(status_message, sizeof(status_message), "ALARM,%s\n", Get_Alarm_String(xAlarmState) );
     SendDataToESP(status_message);
   }
 }

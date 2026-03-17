@@ -17,8 +17,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     vTaskNotifyGiveFromISR(CommTaskHandle, &xHigherPriorityTaskWoken);
 
     /* 2. 重新开启中断接收 (非常重要，否则中断只触发一次) */
-    // 将收到的数据存入 g_uart_rx_byte，长度为 1
-    HAL_UART_Receive_IT(huart, &g_uart_rx_byte, 1);
+    // 将收到的数据存入 xGlobalUartRxByte，长度为 1
+    HAL_UART_Receive_IT(huart, &xGlobalUartRxByte, 1);
 
     /* 3. 强制进行上下文切换 */
     // 如果接收任务优先级高，退出中断后立即执行任务，不等待滴答定时器
@@ -35,7 +35,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   if (GPIO_Pin == PhotoelectricSensor_Pin)
   {
-    drop_count++;
+    xDropCount++;
   }
 }
 

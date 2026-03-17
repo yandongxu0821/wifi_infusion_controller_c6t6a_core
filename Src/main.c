@@ -48,7 +48,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t g_uart_rx_byte;
+uint8_t xGlobalUartRxByte;
 
 /* USER CODE END PV */
 
