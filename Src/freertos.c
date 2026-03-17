@@ -224,7 +224,7 @@ void StartCommTask(void *argument)
       xLastCmdTime = xTaskGetTickCount(); // 重置计时
     }
 
-    // ? alarm变化立即发送一次
+    // alarm变化立即发送一次
     if (xAlarmState != xLastAlarmState) {
       SendStatus();
       xLastAlarmState = xAlarmState;
@@ -279,9 +279,9 @@ void StartControlTask(void *argument)
       HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
     }
 
-    // if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_SET) {
+    // if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
     //   osDelay(20);
-    //   if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_SET) {
+    //   if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
     //     if (xSystemState == IDLE) {
     //       xSystemState = WORKING;
     //     }
@@ -310,15 +310,11 @@ void StartDisplayTask(void *argument)
     SSD1315_Clear();
     uint16_t luxValue = BH1750_Read();
     char buffer[20];
-    {
-      float lux = luxValue / 1.2; // Convert raw value to lux
-      snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
-      SSD1315_ShowString(0, 6, (char*)buffer);
-    }
-    // {
-    //   snprintf((char*)buffer, sizeof(buffer), "Raw:   %d", luxValue);
-    //   SSD1315_ShowString(0, 6, (char*)buffer);
-    // }
+
+    float lux = luxValue / 1.2; // Convert raw value to lux
+    snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
+    SSD1315_ShowString(0, 6, (char*)buffer);
+
     snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(xSystemState));
     SSD1315_ShowString(0, 0, (char*)buffer);
     snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);

@@ -1,6 +1,11 @@
 #include "isr.h"
 #include "state.h"
 
+volatile uint8_t key_lock = 0;
+volatile uint32_t last_key_tick = 0;
+
+#define KEY_DEBOUNCE_MS 50
+
 /**
   * @brief UART 接收完成回调函数
   * @param huart: UART 句柄
@@ -37,15 +42,29 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     xDropCount++;
   }
-}
+  
+  if (GPIO_Pin == PowerKey_Pin) {
+    uint32_t now = HAL_GetTick();
 
-// /**
-//   * @brief UART 发送完成回调函数 (可选)
-//   */
-// void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-// {
-//     if (huart->Instance == USART1)
-//     {
-//         // 可以在这里处理发送完一帧后的逻辑，比如释放发送信号量
-//     }
-// }
+    // 消抖时间过滤
+    if (now - last_key_tick < KEY_DEBOUNCE_MS)
+      return;
+
+    last_key_tick = now;
+
+    // 已经按下过，不再重复触发
+    if (key_lock)
+      return;
+
+    // 检测是否真的按下
+    if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
+      key_lock = 1;
+
+      if (xSystemState == IDLE) {
+        xSystemState = WORKING;
+      } else {
+        xSystemState = IDLE;
+      }
+    }
+  }
+}
