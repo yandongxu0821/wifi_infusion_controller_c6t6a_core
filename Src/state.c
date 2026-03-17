@@ -18,7 +18,7 @@ volatile uint16_t xLastCmdTime = 0;        // 上次收信时间
 volatile float xCurrentSpeed;              // 当前流速
 volatile SystemState_t xSystemState;       // 系统状态
 volatile AlarmState_t xAlarmState;         // 报警状态
-volatile AlarmState_t xLastAlarmState;    // 上次报警状态
+volatile AlarmState_t xLastAlarmState;     // 上次报警状态
 
 const char* Get_State_String(SystemState_t xState) {
   if (xState < STATE_MAX) {
