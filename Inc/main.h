@@ -63,9 +63,10 @@ void Error_Handler(void);
 #define EspRst_GPIO_Port GPIOA
 #define Buzzer_Pin GPIO_PIN_0
 #define Buzzer_GPIO_Port GPIOB
+#define PowerKey_Pin GPIO_PIN_15
+#define PowerKey_GPIO_Port GPIOB
 #define PhotoelectricSensor_Pin GPIO_PIN_15
 #define PhotoelectricSensor_GPIO_Port GPIOA
-#define PhotoelectricSensor_EXTI_IRQn EXTI15_10_IRQn
 
 /* USER CODE BEGIN Private defines */
 
