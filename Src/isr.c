@@ -1,7 +1,6 @@
 #include "isr.h"
 #include "state.h"
 
-volatile uint8_t key_lock = 0;
 volatile uint32_t last_key_tick = 0;
 
 #define KEY_DEBOUNCE_MS 50
@@ -52,13 +51,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
     last_key_tick = now;
 
-    // 已经按下过，不再重复触发
-    if (key_lock)
-      return;
-
     // 检测是否真的按下
     if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
-      key_lock = 1;
 
       if (xSystemState == IDLE) {
         xSystemState = WORKING;
