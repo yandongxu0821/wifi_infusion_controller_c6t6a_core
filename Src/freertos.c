@@ -45,8 +45,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define REPORT_INTERVAL 15000
-#define UART_TIMEOUT 10000
+#define REPORT_INTERVAL 5000
+#define UART_TIMEOUT 5000
 
 /* USER CODE END PD */
 
@@ -57,7 +57,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+float lux = 0;
 /* USER CODE END Variables */
 /* Definitions for CommTask */
 osThreadId_t CommTaskHandle;
@@ -308,23 +308,25 @@ void StartDisplayTask(void *argument)
   /* Infinite loop */
   for(;;) {
     SSD1315_Clear();
-    uint16_t luxValue = BH1750_Read();
     char buffer[20];
-
-    float lux = luxValue / 1.2; // Convert raw value to lux
-    snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
-    SSD1315_ShowString(0, 6, (char*)buffer);
 
     snprintf((char*)buffer, sizeof(buffer), "State: %s", Get_State_String(xSystemState));
     SSD1315_ShowString(0, 0, (char*)buffer);
+
+    snprintf((char*)buffer, sizeof(buffer), "Alarm: %s", Get_Alarm_String(xAlarmState));
+    SSD1315_ShowString(0, 2, (char*)buffer);
+
     snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);
     SSD1315_ShowString(0, 4, (char*)buffer);
     // snprintf((char*)buffer, sizeof(buffer), "Count: %d", xDropCount);
     // SSD1315_ShowString(0, 4, (char*)buffer);
-    snprintf((char*)buffer, sizeof(buffer), "Alarm: %s", Get_Alarm_String(xAlarmState));
-    SSD1315_ShowString(0, 2, (char*)buffer);
-    SSD1315_Update();
 
+    uint16_t luxValue = BH1750_Read();
+    lux = luxValue / 1.2; // Convert raw value to lux
+    snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
+    SSD1315_ShowString(0, 6, (char*)buffer);
+
+    SSD1315_Update();
     osDelay(500);
   }
   /* USER CODE END StartDisplayTask */
@@ -548,6 +550,9 @@ void SendStatus(void) {
   if (xSystemState == IDLE) {   // Only report state when idle, to reduce unnecessary updates
     snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(xSystemState) );
     SendDataToESP(status_message);
+    
+    snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
+    SendDataToESP(status_message);
     return;
   }
   
@@ -557,10 +562,11 @@ void SendStatus(void) {
   snprintf(status_message, sizeof(status_message), "SPEED,%.2f\n", xCurrentSpeed );
   SendDataToESP(status_message);
 
-  if (xAlarmState != ALARM_NONE) {   // Only report alarm when it's active, to reduce unnecessary updates
-    snprintf(status_message, sizeof(status_message), "ALARM,%s\n", Get_Alarm_String(xAlarmState) );
-    SendDataToESP(status_message);
-  }
+  snprintf(status_message, sizeof(status_message), "ALARM,%s\n", Get_Alarm_String(xAlarmState) );
+  SendDataToESP(status_message);
+  
+  snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
+  SendDataToESP(status_message);
 }
 
 /* USER CODE END Application */

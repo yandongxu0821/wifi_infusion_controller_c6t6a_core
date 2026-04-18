@@ -2,18 +2,18 @@
 #include "state.h"
 
 volatile uint32_t last_key_tick = 0;
+volatile uint32_t last_photo_tick = 0;
 
 #define KEY_DEBOUNCE_MS 50
+#define PHOTO_DEBOUNCE_MS 10
 
 /**
   * @brief UART 接收完成回调函数
   * @param huart: UART 句柄
   */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   // 检查是哪一个串口触发的中断
-  if (huart->Instance == USART1) 
-  {
+  if (huart->Instance == USART1) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     /* 1. 发送任务通知给接收任务 */
@@ -34,12 +34,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   * @brief GPIO 外部中断回调函数
   * @param GPIO_Pin: 触发中断的 GPIO 引脚编号
   */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-  if (GPIO_Pin == PhotoelectricSensor_Pin)
-  {
-    xDropCount++;
+  if (GPIO_Pin == PhotoelectricSensor_Pin) {
+    uint32_t now = HAL_GetTick();
+    if (now - last_photo_tick >= PHOTO_DEBOUNCE_MS) {
+      last_photo_tick = now;
+      xDropCount++;
+    }
   }
   
   if (GPIO_Pin == PowerKey_Pin) {
