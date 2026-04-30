@@ -1,8 +1,6 @@
 #include "bh1750.h"
 #include "cmsis_os2.h"
 
-#define BH1750_ADDR 0x46
-
 void BH1750_Init(void)
 {
     uint8_t pwr_on = 0x01; // Power On

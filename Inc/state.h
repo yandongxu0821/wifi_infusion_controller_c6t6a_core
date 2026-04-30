@@ -15,7 +15,7 @@ typedef enum {
   ALARM_NONE = 0,
   ALARM_COMPLETE,
   ALARM_LOW,
-  ALARM_FAST,
+  ALARM_HIGH,
   ALARM_MAX
 } AlarmState_t;
 

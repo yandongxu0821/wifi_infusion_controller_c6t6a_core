@@ -35,13 +35,13 @@ extern "C" {
 extern I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN Private defines */
-
+#define I2C_TIMEOUT 500  // I2C 检测超时定义
 /* USER CODE END Private defines */
 
 void MX_I2C1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-
+HAL_StatusTypeDef I2C_Check_Device(I2C_HandleTypeDef *hi2c, uint16_t DevAddress);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

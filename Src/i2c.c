@@ -141,5 +141,10 @@ void HAL_I2C_MspDeInit(I2C_HandleTypeDef* i2cHandle)
 }
 
 /* USER CODE BEGIN 1 */
-
+HAL_StatusTypeDef I2C_Check_Device(I2C_HandleTypeDef *hi2c, uint16_t DevAddress)
+{
+  uint8_t buffer = 0;
+  HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(hi2c, DevAddress, &buffer, 0, I2C_TIMEOUT);
+  return status;
+}
 /* USER CODE END 1 */

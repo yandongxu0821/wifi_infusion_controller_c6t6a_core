@@ -10,7 +10,7 @@ const char* AlarmStateStrings[] = {
   "NONE",
   "COMPLETE",
   "LOW",
-  "FAST"
+  "HIGH"
 };
 
 volatile uint16_t xDropCount = 0;          // ÖÐ¶Ï¼ÆÊý

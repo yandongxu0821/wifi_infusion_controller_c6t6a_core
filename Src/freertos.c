@@ -57,7 +57,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-float lux = 0;
+float   lux           = 0;             // 当前光照强度
+float   limits[2]     = {1.00, 8.00};  // 滴速上下限，单位滴/秒
+uint8_t BH1750Present = 0;             // 标志位，表示 BH1750 是否存在
+uint8_t showStatus    = 0;             // 显示切换标志，0显示状态，1显示光照
+uint8_t showCount     = 0;             // 显示切换计数
 /* USER CODE END Variables */
 /* Definitions for CommTask */
 osThreadId_t CommTaskHandle;
@@ -123,9 +127,14 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-	BH1750_Init();
-  BH1750_Start(0x10);
-	SSD1315_Init();
+  if (I2C_Check_Device(&hi2c1, BH1750_ADDR) == HAL_OK) {
+    BH1750_Init();
+    BH1750_Start(0x10);
+    BH1750Present = 1;
+  } else {
+    BH1750Present = 0;
+  }
+  SSD1315_Init();
 
   SSD1315_ShowString(0, 0, "System Init");
   SSD1315_ShowString(0, 2, "WiFi Connecting");
@@ -262,7 +271,7 @@ void StartControlTask(void *argument)
           HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_SET);
           break;
 
-        case ALARM_FAST:
+        case ALARM_HIGH:
           HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_SET);
           break;
 
@@ -278,19 +287,6 @@ void StartControlTask(void *argument)
     } else {  // xSystemState == IDLE
       HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
     }
-
-    // if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
-    //   osDelay(20);
-    //   if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
-    //     if (xSystemState == IDLE) {
-    //       xSystemState = WORKING;
-    //     }
-    //     else {
-    //       xSystemState = IDLE;
-    //     }
-    //   }
-    // }
-
   }
   /* USER CODE END StartControlTask */
 }
@@ -318,15 +314,27 @@ void StartDisplayTask(void *argument)
 
     snprintf((char*)buffer, sizeof(buffer), "Speed: %.2f", xCurrentSpeed);
     SSD1315_ShowString(0, 4, (char*)buffer);
-    // snprintf((char*)buffer, sizeof(buffer), "Count: %d", xDropCount);
-    // SSD1315_ShowString(0, 4, (char*)buffer);
 
-    uint16_t luxValue = BH1750_Read();
-    lux = luxValue / 1.2; // Convert raw value to lux
-    snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
-    SSD1315_ShowString(0, 6, (char*)buffer);
+    if (BH1750Present) {
+      uint16_t luxValue = BH1750_Read();
+      lux = luxValue / 1.2;
+      if (showStatus) {
+        snprintf((char*)buffer, sizeof(buffer), "Light: %.2f", lux);
+        SSD1315_ShowString(0, 6, (char*)buffer);
+      } else {
+        snprintf((char*)buffer, sizeof(buffer), "LO=%.2f HI=%.2f", limits[0], limits[1]);
+        SSD1315_ShowString(0, 6, (char*)buffer);
+      }
+    } else {
+      snprintf((char*)buffer, sizeof(buffer), "LO=%.2f HI=%.2f", limits[0], limits[1]);
+      SSD1315_ShowString(0, 6, (char*)buffer);
+    }
 
     SSD1315_Update();
+    if (showCount++ >= 10) { // 每 10 次刷新切换一次显示
+      showCount = 0;
+      showStatus = !showStatus;
+    }
     osDelay(500);
   }
   /* USER CODE END StartDisplayTask */
@@ -349,8 +357,8 @@ void StartFlowDetectTask(void *argument)
   /* 上一次检测到液滴的时间 (tick)，用于超时判断 */
   uint32_t last_drop_tick  = xTaskGetTickCount();
 
-  /* 3秒滑动窗口，每个元素保存1秒内的滴数 */
-  uint16_t sec_count[3] = {0};
+  /* 5秒滑动窗口，每个元素保存1秒内的滴数 */
+  uint16_t sec_count[5] = {0};
 
   /* 当前滑动窗口索引 */
   uint8_t index = 0;
@@ -380,7 +388,7 @@ void StartFlowDetectTask(void *argument)
 
       sum = 0;
 
-      for (int i = 0; i < 3; i++)
+      for (int i = 0; i < 5; i++)
         sec_count[i] = 0;
 
       xAlarmState = ALARM_NONE;
@@ -390,7 +398,7 @@ void StartFlowDetectTask(void *argument)
 
     /*====================================================
       每 1 秒更新一次滴速
-      使用滑动窗口统计最近 3 秒的滴数
+      使用滑动窗口统计最近 5 秒的滴数
     ====================================================*/
     if (xTaskGetTickCount() - last_speed_tick >= speed_period)
     {
@@ -414,7 +422,7 @@ void StartFlowDetectTask(void *argument)
       /*------------------------------------------
         滑动窗口更新
 
-        sum = 最近3秒总滴数
+        sum = 最近5秒总滴数
 
         每秒：
         - 减去最旧的1秒
@@ -428,15 +436,15 @@ void StartFlowDetectTask(void *argument)
       sum += sec_count[index];
 
       index++;
-      if (index >= 3)
+      if (index >= 5)
         index = 0;
 
       /*------------------------------------------
         计算滴速 (滴/秒)
 
-        最近3秒总滴数 / 3
+        最近5秒总滴数 / 5
       ------------------------------------------*/
-      xCurrentSpeed = (float)sum / 3.0f;
+      xCurrentSpeed = (float)sum / 5.0f;
 
       last_speed_tick = xTaskGetTickCount();
     }
@@ -458,13 +466,13 @@ void StartFlowDetectTask(void *argument)
       ------------------------------------------*/
 
       /* 滴速过快 */
-      if (xCurrentSpeed > 5.0f)
+      if (xCurrentSpeed > limits[1])
       {
-        xAlarmState = ALARM_FAST;
+        xAlarmState = ALARM_HIGH;
       }
 
       /* 滴速过慢 (但不是0) */
-      else if (xCurrentSpeed < 0.5f && xCurrentSpeed > 0.0f)
+      else if (xCurrentSpeed < limits[0] && xCurrentSpeed > 0.0f)
       {
         xAlarmState = ALARM_LOW;
       }
@@ -498,6 +506,43 @@ static int parse_uint(const char *s, int *value) {
 }
 */
 
+static int parse_float(const char *s, float *value) {
+  if (!s || !value) return 0;
+
+  int int_part = 0;
+  int frac_part = 0;
+  int frac_div = 1;
+  int has_digit = 0;
+
+  // --- 整数部分 ---
+  while (*s >= '0' && *s <= '9') {
+    has_digit = 1;
+    int_part = int_part * 10 + (*s - '0');
+    s++;
+  }
+
+  // --- 小数部分 ---
+  if (*s == '.') {
+    s++;
+    if (*s < '0' || *s > '9') return 0;  // "." 后必须有数字
+
+    while (*s >= '0' && *s <= '9') {
+      frac_part = frac_part * 10 + (*s - '0');
+      frac_div *= 10;
+      s++;
+    }
+  }
+
+  // --- 至少要有数字 ---
+  if (!has_digit) return 0;
+
+  // --- 结尾校验 ---
+  if (*s != '\0' && *s != '\r' && *s != '\n') return 0;
+
+  *value = (float)int_part + (float)frac_part / frac_div;
+  return 1;
+}
+
 void SendDataToESP(char *data) {
   HAL_UART_Transmit(&huart1, (uint8_t *)data, strlen(data), 100);
 }
@@ -506,18 +551,63 @@ void ParseCommand(char *command) {
   if (!command || !command[0]) return;
 
   char first = command[0];
-  if (first == 'H') {   // Heartbeat
+
+  /* ---------------- 心跳 ---------------- */
+  if (first == 'H') {   
+    // HB 心跳
     if (command[1] == 'B' && (command[2] == '\0' || command[2] == '\r' || command[2] == '\n')) {
       SendDataToESP("ACK\n");
       goto clear;
     }
+
+    // HI,<value>  上限
+    if (command[1] == 'I' && command[2] == ',') {
+      float val;
+      if (!parse_float(command + 3, &val)) {
+        SendDataToESP("ERROR\n");
+        goto clear;
+      }
+
+      if (val < 0 || val > 50) {
+        SendDataToESP("ERROR\n");
+        goto clear;
+      }
+      limits[1] = val;
+
+      SendDataToESP("ACK\n");
+      goto clear;
+    }
   }
-  else if (first == 'C') {   // Command
+
+  /* ---------------- 下限 ---------------- */
+  else if (first == 'L') {  
+    // LO,<value>
+    if (command[1] == 'O' && command[2] == ',') {
+      float val;
+      if (!parse_float(command + 3, &val)) {
+        SendDataToESP("ERROR\n");
+        goto clear;
+      }
+
+      if (val < 0 || val > 50) {
+        SendDataToESP("ERROR\n");
+        goto clear;
+      }
+      limits[0] = val;
+
+      SendDataToESP("ACK\n");
+      goto clear;
+    }
+  }
+
+  /* ---------------- CMD控制 ---------------- */
+  else if (first == 'C') {   
     if (strncmp(command, "CMD,", 4) != 0) {
       goto clear;
     }
 
     char *cmd = command + 4;
+
     if (strncmp(cmd, "START", 5) == 0) {
       char n = cmd[5];
       if (n == '\0' || n == '\r' || n == '\n') {
@@ -551,8 +641,12 @@ void SendStatus(void) {
     snprintf(status_message, sizeof(status_message), "STATE,%s\n", Get_State_String(xSystemState) );
     SendDataToESP(status_message);
     
-    snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
-    SendDataToESP(status_message);
+    if (BH1750Present) {
+      snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
+      SendDataToESP(status_message);
+    } else {
+      SendDataToESP("LIGHT,NULL\n");
+    }
     return;
   }
   
@@ -565,8 +659,12 @@ void SendStatus(void) {
   snprintf(status_message, sizeof(status_message), "ALARM,%s\n", Get_Alarm_String(xAlarmState) );
   SendDataToESP(status_message);
   
-  snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
-  SendDataToESP(status_message);
+  if (BH1750Present) {
+    snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
+    SendDataToESP(status_message);
+  } else {
+    SendDataToESP("LIGHT,NULL\n");
+  }
 }
 
 /* USER CODE END Application */
