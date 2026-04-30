@@ -91,16 +91,6 @@ const osThreadAttr_t FlowDetectTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for LuxQueue */
-osMessageQueueId_t LuxQueueHandle;
-const osMessageQueueAttr_t LuxQueue_attributes = {
-  .name = "LuxQueue"
-};
-/* Definitions for CmdQueue */
-osMessageQueueId_t CmdQueueHandle;
-const osMessageQueueAttr_t CmdQueue_attributes = {
-  .name = "CmdQueue"
-};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -162,13 +152,6 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
-
-  /* Create the queue(s) */
-  /* creation of LuxQueue */
-  LuxQueueHandle = osMessageQueueNew (2, sizeof(uint16_t), &LuxQueue_attributes);
-
-  /* creation of CmdQueue */
-  CmdQueueHandle = osMessageQueueNew (4, 16, &CmdQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -493,7 +476,6 @@ void StartFlowDetectTask(void *argument)
 /* USER CODE BEGIN Application */
 
 /** replace from atoi(), but more fast **
- ** UNUSED **
 static int parse_uint(const char *s, int *value) {
   int num = 0;
   if (!s || *s < '0' || *s > '9') return 0;
@@ -552,7 +534,7 @@ void ParseCommand(char *command) {
 
   char first = command[0];
 
-  /* ---------------- 心跳 ---------------- */
+  /* ---------------- 心跳/上限 ---------------- */
   if (first == 'H') {   
     // HB 心跳
     if (command[1] == 'B' && (command[2] == '\0' || command[2] == '\r' || command[2] == '\n')) {
@@ -630,6 +612,15 @@ void ParseCommand(char *command) {
     }
   }
 
+  /* ---------------- 重新握手 ---------------- */
+  else if (first == 'S') {
+    // SYN 握手
+    if (strcmp(command, "SYN") == 0) {
+      SendDataToESP("ACK,SYN\n");
+      goto clear;
+    }
+  }
+
 clear:
   command[0] = '\0';
 }
@@ -644,8 +635,6 @@ void SendStatus(void) {
     if (BH1750Present) {
       snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
       SendDataToESP(status_message);
-    } else {
-      SendDataToESP("LIGHT,NULL\n");
     }
     return;
   }
@@ -662,8 +651,6 @@ void SendStatus(void) {
   if (BH1750Present) {
     snprintf(status_message, sizeof(status_message), "LIGHT,%.2f\n", lux );
     SendDataToESP(status_message);
-  } else {
-    SendDataToESP("LIGHT,NULL\n");
   }
 }
 
