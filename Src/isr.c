@@ -1,8 +1,8 @@
 #include "isr.h"
 #include "state.h"
 
-volatile uint32_t last_key_tick = 0;
-volatile uint32_t last_photo_tick = 0;
+volatile uint32_t xLastKeyTick   = 0;
+volatile uint32_t xLastPhotoTick = 0;
 
 #define KEY_DEBOUNCE_MS 50
 #define PHOTO_DEBOUNCE_MS 10
@@ -38,8 +38,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   if (GPIO_Pin == PhotoelectricSensor_Pin) {
     uint32_t now = HAL_GetTick();
-    if (now - last_photo_tick >= PHOTO_DEBOUNCE_MS) {
-      last_photo_tick = now;
+    if (now - xLastPhotoTick >= PHOTO_DEBOUNCE_MS) {
+      xLastPhotoTick = now;
       xDropCount++;
     }
   }
@@ -48,10 +48,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     uint32_t now = HAL_GetTick();
 
     // 消抖时间过滤
-    if (now - last_key_tick < KEY_DEBOUNCE_MS)
+    if (now - xLastKeyTick < KEY_DEBOUNCE_MS)
       return;
 
-    last_key_tick = now;
+    xLastKeyTick = now;
 
     // 检测是否真的按下
     if (HAL_GPIO_ReadPin(PowerKey_GPIO_Port, PowerKey_Pin) == GPIO_PIN_RESET) {
