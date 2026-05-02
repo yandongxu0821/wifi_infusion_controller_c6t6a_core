@@ -32,6 +32,7 @@
 #include "handshake.h"
 #include "stdio.h"
 #include "usart.h"
+#include "isr.h"
 #include "string.h"
 #include "stdlib.h"
 
@@ -140,6 +141,11 @@ void MX_FREERTOS_Init(void) {
   SSD1315_Update();
 	
   HAL_Delay(1000);
+
+  /* 启动 UART DMA + IDLE 接收（在握手完成后启动，避免与阻塞接收冲突） */
+  if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, g_UartRxBuf, UART_RX_BUF_SZ) != HAL_OK) {
+    Error_Handler();
+  }
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -201,14 +207,21 @@ void StartCommTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    char xUartReceivedData[100];
+    char xUartReceivedData[UART_RX_BUF_SZ + 1];
 
-    // 等待UART事件（最多10ms）
-    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10)) > 0) {
-      int len = HAL_UART_Receive(&huart1, (uint8_t *)xUartReceivedData, sizeof(xUartReceivedData), 0);
+    // 等待 UART 事件（最多 100ms），由 HAL_UARTEx_RxEventCallback 通知
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100)) > 0) {
+      uint16_t len = g_UartRxLen;
 
       if (len > 0) {
-        ParseCommand(xUartReceivedData);    // 此函数最后会清除 xUartReceivedData
+        if (len >= UART_RX_BUF_SZ) len = UART_RX_BUF_SZ;
+        memcpy(xUartReceivedData, g_UartRxBuf, len);
+        xUartReceivedData[len] = '\0';
+
+        // 清除长度，防止重复处理
+        g_UartRxLen = 0;
+
+        ParseCommand(xUartReceivedData);
         xLastCmdTime = xTaskGetTickCount();
       }
     }
@@ -234,7 +247,7 @@ void StartCommTask(void *argument)
       xLastWakeTime = xTaskGetTickCount();
     }
 
-    osDelay(100);
+    // osDelay(10);
   }
   /* USER CODE END StartCommTask */
 }
@@ -340,140 +353,133 @@ void StartFlowDetectTask(void *argument)
 {
   /* USER CODE BEGIN StartFlowDetectTask */
 
-  /* 上一次计算滴速的时间 (tick) */
-  uint32_t last_speed_tick = xTaskGetTickCount();
+//   uint32_t last_speed_tick = xTaskGetTickCount();// 上一次计算滴速的时间 (tick)
+  
+//   uint32_t last_drop_tick  = xTaskGetTickCount();// 上一次检测到液滴的时间 (tick)，用于超时判断
+  
+//   uint16_t sec_count[5] = {0};// 5秒滑动窗口，每个元素保存1秒内的滴数
+  
+//   uint8_t index = 0;// 当前滑动窗口索引
+  
+//   uint32_t sum = 0;// 最近3秒总滴数
+  
+//   const uint32_t speed_period = 1000;// 滴速更新周期 (ms)
+  
+//   const uint32_t timeout = 5000;// 无滴超时时间 (ms)，超过则认为输液完成
 
-  /* 上一次检测到液滴的时间 (tick)，用于超时判断 */
-  uint32_t last_drop_tick  = xTaskGetTickCount();
+//   /* Infinite loop */
+//   for(;;)
+//   {
+//     /* 任务周期 10ms */
+//     osDelay(10);
 
-  /* 5秒滑动窗口，每个元素保存1秒内的滴数 */
-  uint16_t sec_count[5] = {0};
+//     /*====================================================
+//       当系统处于 IDLE 状态时，不进行滴速计算
+//       清空所有计数器，确保重新开始时状态正确
+//     ====================================================*/
+//     if (xSystemState == IDLE)
+//     {
+//       xDropCount = 0;
 
-  /* 当前滑动窗口索引 */
-  uint8_t index = 0;
+//       sum = 0;
 
-  /* 最近3秒总滴数 */
-  uint32_t sum = 0;
+//       for (int i = 0; i < 5; i++)
+//         sec_count[i] = 0;
 
-  /* 滴速更新周期 (ms) */
-  const uint32_t speed_period = 1000;
+//       xAlarmState = ALARM_NONE;
 
-  /* 无滴超时时间 (ms)，超过则认为输液完成 */
-  const uint32_t timeout = 5000;
+//       continue;
+//     }
 
-  /* Infinite loop */
-  for(;;)
-  {
-    /* 任务周期 10ms */
-    osDelay(10);
+//     /*====================================================
+//       每 1 秒更新一次滴速
+//       使用滑动窗口统计最近 5 秒的滴数
+//     ====================================================*/
+//     if (xTaskGetTickCount() - last_speed_tick >= speed_period)
+//     {
+//       uint16_t new_count;
 
-    /*====================================================
-      当系统处于 IDLE 状态时，不进行滴速计算
-      清空所有计数器，确保重新开始时状态正确
-    ====================================================*/
-    if (xSystemState == IDLE)
-    {
-      xDropCount = 0;
+//       /*------------------------------------------
+//         临界区读取中断计数
+//         防止 EXTI 中断同时修改 xDropCount
+//       ------------------------------------------*/
+//       taskENTER_CRITICAL();
+//       new_count = xDropCount;
+//       xDropCount = 0;
+//       taskEXIT_CRITICAL();
 
-      sum = 0;
+//       /* 如果本秒检测到滴数，更新最后滴时间 */
+//       if (new_count > 0)
+//       {
+//         last_drop_tick = xTaskGetTickCount();
+//       }
 
-      for (int i = 0; i < 5; i++)
-        sec_count[i] = 0;
+//       /*------------------------------------------
+//         滑动窗口更新
 
-      xAlarmState = ALARM_NONE;
+//         sum = 最近5秒总滴数
 
-      continue;
-    }
+//         每秒：
+//         - 减去最旧的1秒
+//         - 加上最新的1秒
+//       ------------------------------------------*/
 
-    /*====================================================
-      每 1 秒更新一次滴速
-      使用滑动窗口统计最近 5 秒的滴数
-    ====================================================*/
-    if (xTaskGetTickCount() - last_speed_tick >= speed_period)
-    {
-      uint16_t new_count;
+//       sum -= sec_count[index];
 
-      /*------------------------------------------
-        临界区读取中断计数
-        防止 EXTI 中断同时修改 xDropCount
-      ------------------------------------------*/
-      taskENTER_CRITICAL();
-      new_count = xDropCount;
-      xDropCount = 0;
-      taskEXIT_CRITICAL();
+//       sec_count[index] = new_count;
 
-      /* 如果本秒检测到滴数，更新最后滴时间 */
-      if (new_count > 0)
-      {
-        last_drop_tick = xTaskGetTickCount();
-      }
+//       sum += sec_count[index];
 
-      /*------------------------------------------
-        滑动窗口更新
+//       index++;
+//       if (index >= 5)
+//         index = 0;
 
-        sum = 最近5秒总滴数
+//       /*------------------------------------------
+//         计算滴速 (滴/秒)
 
-        每秒：
-        - 减去最旧的1秒
-        - 加上最新的1秒
-      ------------------------------------------*/
+//         最近5秒总滴数 / 5
+//       ------------------------------------------*/
+//       xCurrentSpeed = (float)sum / 5.0f;
 
-      sum -= sec_count[index];
+//       last_speed_tick = xTaskGetTickCount();
+//     }
 
-      sec_count[index] = new_count;
+//     /*====================================================
+//       超时判断
 
-      sum += sec_count[index];
+//       如果超过 timeout 没有检测到新的液滴
+//       认为输液完成或阻塞 → ALARM_COMPLETE
+//     ====================================================*/
+//     if (xTaskGetTickCount() - last_drop_tick >= timeout)
+//     {
+//       xAlarmState = ALARM_COMPLETE;
+//     }
+//     else
+//     {
+//       /*------------------------------------------
+//         根据滴速判断报警状态
+//       ------------------------------------------*/
 
-      index++;
-      if (index >= 5)
-        index = 0;
+//       /* 滴速过快 */
+//       if (xCurrentSpeed > xFlowRateLimits[1])
+//       {
+//         xAlarmState = ALARM_HIGH;
+//       }
 
-      /*------------------------------------------
-        计算滴速 (滴/秒)
+//       /* 滴速过慢 (但不是0) */
+//       else if (xCurrentSpeed < xFlowRateLimits[0] && xCurrentSpeed > 0.0f)
+//       {
+//         xAlarmState = ALARM_LOW;
+//       }
 
-        最近5秒总滴数 / 5
-      ------------------------------------------*/
-      xCurrentSpeed = (float)sum / 5.0f;
+//       /* 正常 */
+//       else
+//       {
+//         xAlarmState = ALARM_NONE;
+//       }
+//     }
 
-      last_speed_tick = xTaskGetTickCount();
-    }
-
-    /*====================================================
-      超时判断
-
-      如果超过 timeout 没有检测到新的液滴
-      认为输液完成或阻塞 → ALARM_COMPLETE
-    ====================================================*/
-    if (xTaskGetTickCount() - last_drop_tick >= timeout)
-    {
-      xAlarmState = ALARM_COMPLETE;
-    }
-    else
-    {
-      /*------------------------------------------
-        根据滴速判断报警状态
-      ------------------------------------------*/
-
-      /* 滴速过快 */
-      if (xCurrentSpeed > xFlowRateLimits[1])
-      {
-        xAlarmState = ALARM_HIGH;
-      }
-
-      /* 滴速过慢 (但不是0) */
-      else if (xCurrentSpeed < xFlowRateLimits[0] && xCurrentSpeed > 0.0f)
-      {
-        xAlarmState = ALARM_LOW;
-      }
-
-      /* 正常 */
-      else
-      {
-        xAlarmState = ALARM_NONE;
-      }
-    }
-
-  }
+//   }
 
   /* USER CODE END StartFlowDetectTask */
 }

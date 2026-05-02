@@ -1,32 +1,36 @@
 #include "isr.h"
 #include "state.h"
 
-volatile uint32_t xLastKeyTick   = 0;
-volatile uint32_t xLastPhotoTick = 0;
+volatile uint32_t xLastKeyTick     = 0;
+volatile uint32_t xLastDropTickISR = 0;
 
 #define KEY_DEBOUNCE_MS 50
 #define PHOTO_DEBOUNCE_MS 10
 
 /**
-  * @brief UART 接收完成回调函数
+  * @brief UART 空闲接收回调（使用 HAL UART Ex 的 ReceiveToIdle DMA）
   * @param huart: UART 句柄
+  * @param Size: 实际接收到的数据长度
   */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  // 检查是哪一个串口触发的中断
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
   if (huart->Instance == USART1) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    /* 1. 发送任务通知给接收任务 */
-    // vTaskNotifyGiveFromISR 是最快的同步方式
+    if (Size > UART_RX_BUF_SZ) {
+      Size = UART_RX_BUF_SZ;
+    }
+
+    // 保存接收长度，由任务读取并处理缓冲区内容
+    g_UartRxLen = Size;
+
+    // 通知 CommTask 有数据到达
     vTaskNotifyGiveFromISR(CommTaskHandle, &xHigherPriorityTaskWoken);
 
-    /* 2. 重新开启中断接收 (非常重要，否则中断只触发一次) */
-    // 将收到的数据存入 xGlobalUartRxByte，长度为 1
-    HAL_UART_Receive_IT(huart, &xGlobalUartRxByte, 1);
-
-    /* 3. 强制进行上下文切换 */
-    // 如果接收任务优先级高，退出中断后立即执行任务，不等待滴答定时器
+    // 请求调度切换（如果需要）
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+
+    // 重新启动 DMA 接收，准备下一次接收
+    HAL_UARTEx_ReceiveToIdle_DMA(huart, g_UartRxBuf, UART_RX_BUF_SZ);
   }
 }
 
@@ -38,8 +42,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
   if (GPIO_Pin == PhotoelectricSensor_Pin) {
     uint32_t now = HAL_GetTick();
-    if (now - xLastPhotoTick >= PHOTO_DEBOUNCE_MS) {
-      xLastPhotoTick = now;
+    if (now - xLastDropTickISR >= PHOTO_DEBOUNCE_MS) {
+      xLastDropTickISR = now;
       xDropCount++;
     }
   }

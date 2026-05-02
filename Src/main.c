@@ -48,7 +48,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t xGlobalUartRxByte;
+// 全局 UART DMA 接收缓冲区（定义在 main.c，声明在 isr.h）
+uint8_t g_UartRxBuf[UART_RX_BUF_SZ];
+volatile uint16_t g_UartRxLen = 0;
 
 /* USER CODE END PV */
 
