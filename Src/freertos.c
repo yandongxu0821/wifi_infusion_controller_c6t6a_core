@@ -352,135 +352,134 @@ void StartDisplayTask(void *argument)
 void StartFlowDetectTask(void *argument)
 {
   /* USER CODE BEGIN StartFlowDetectTask */
+  /* 上一次滴落时间（任务侧） */
+  uint32_t last_drop_tick = HAL_GetTick();  // 使用 HAL 获取时间戳
 
-//   uint32_t last_speed_tick = xTaskGetTickCount();// 上一次计算滴速的时间 (tick)
-  
-//   uint32_t last_drop_tick  = xTaskGetTickCount();// 上一次检测到液滴的时间 (tick)，用于超时判断
-  
-//   uint16_t sec_count[5] = {0};// 5秒滑动窗口，每个元素保存1秒内的滴数
-  
-//   uint8_t index = 0;// 当前滑动窗口索引
-  
-//   uint32_t sum = 0;// 最近3秒总滴数
-  
-//   const uint32_t speed_period = 1000;// 滴速更新周期 (ms)
-  
-//   const uint32_t timeout = 5000;// 无滴超时时间 (ms)，超过则认为输液完成
+  /* EMA 平滑后的滴速（以整型表示） */
+  uint16_t speed_ema = 0;  // 滴速的EMA（使用整数表示，单位为滴/100ms）
 
-//   /* Infinite loop */
-//   for(;;)
-//   {
-//     /* 任务周期 10ms */
-//     osDelay(10);
+  /* EMA 系数（简单线性加权） */
+  const uint8_t alpha = 30;  // 这里的30是用于控制EMA平滑的比例，实际可以调节
 
-//     /*====================================================
-//       当系统处于 IDLE 状态时，不进行滴速计算
-//       清空所有计数器，确保重新开始时状态正确
-//     ====================================================*/
-//     if (xSystemState == IDLE)
-//     {
-//       xDropCount = 0;
+  /* 最大滴速限制（防止异常脉冲，单位：滴/100ms） */
+  const uint8_t MAX_SPEED = 80;  // 对应8滴/秒，即80滴/100ms
 
-//       sum = 0;
+  /* 最小有效间隔（ms）防抖，单位：滴/100ms*/
+  const uint8_t MIN_INTERVAL = 50;  // 对应20滴/秒，即50ms之间
 
-//       for (int i = 0; i < 5; i++)
-//         sec_count[i] = 0;
+  /* 基础超时（ms） */
+  const uint32_t BASE_TIMEOUT = 3000;
 
-//       xAlarmState = ALARM_NONE;
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(50);
 
-//       continue;
-//     }
+    /*====================================================
+      IDLE 状态处理
+    ====================================================*/
+    if (xSystemState == IDLE)
+    {
+      /* 清空滴数 */
+      taskENTER_CRITICAL();
+      xDropCount = 0;
+      taskEXIT_CRITICAL();
 
-//     /*====================================================
-//       每 1 秒更新一次滴速
-//       使用滑动窗口统计最近 5 秒的滴数
-//     ====================================================*/
-//     if (xTaskGetTickCount() - last_speed_tick >= speed_period)
-//     {
-//       uint16_t new_count;
+      /* EMA 滴速清零 */
+      speed_ema = 0;
 
-//       /*------------------------------------------
-//         临界区读取中断计数
-//         防止 EXTI 中断同时修改 xDropCount
-//       ------------------------------------------*/
-//       taskENTER_CRITICAL();
-//       new_count = xDropCount;
-//       xDropCount = 0;
-//       taskEXIT_CRITICAL();
+      /* 当前滴速清零 */
+      xCurrentSpeed = 0;
 
-//       /* 如果本秒检测到滴数，更新最后滴时间 */
-//       if (new_count > 0)
-//       {
-//         last_drop_tick = xTaskGetTickCount();
-//       }
+      /* 报警状态清空 */
+      xAlarmState = ALARM_NONE;
 
-//       /*------------------------------------------
-//         滑动窗口更新
+      last_drop_tick = HAL_GetTick();
 
-//         sum = 最近5秒总滴数
+      continue;
+    }
 
-//         每秒：
-//         - 减去最旧的1秒
-//         - 加上最新的1秒
-//       ------------------------------------------*/
+    /*====================================================
+      检测是否有新液滴（通过 ISR 时间戳变化）
+    ====================================================*/
+    uint32_t current_isr_tick;
 
-//       sum -= sec_count[index];
+    taskENTER_CRITICAL();
+    current_isr_tick = xLastDropTickISR;
+    taskEXIT_CRITICAL();
 
-//       sec_count[index] = new_count;
+    /* 有新滴（时间戳更新） */
+    if (current_isr_tick != last_drop_tick)
+    {
+      uint32_t delta_tick = current_isr_tick - last_drop_tick;
 
-//       sum += sec_count[index];
+      last_drop_tick = current_isr_tick;
 
-//       index++;
-//       if (index >= 5)
-//         index = 0;
+      /* 转换为滴速（单位：滴/100ms） */
+      if (delta_tick > MIN_INTERVAL)
+      {
+        uint16_t inst_speed = 1000 / delta_tick;  // 计算滴速（单位：滴/100ms）
 
-//       /*------------------------------------------
-//         计算滴速 (滴/秒)
+        /* 限幅：防止异常值 */
+        if (inst_speed <= MAX_SPEED)
+        {
+          /* EMA 滴速更新（整数加权平均） */
+          speed_ema = (speed_ema * (100 - alpha) + inst_speed * alpha) / 100;
 
-//         最近5秒总滴数 / 5
-//       ------------------------------------------*/
-//       xCurrentSpeed = (float)sum / 5.0f;
+          /* 更新滴速 */
+          xCurrentSpeed = speed_ema;
+        }
+      }
+    }
 
-//       last_speed_tick = xTaskGetTickCount();
-//     }
+    /*====================================================
+      自适应超时判断
+    ====================================================*/
+    uint32_t now = HAL_GetTick();
 
-//     /*====================================================
-//       超时判断
+    uint32_t dynamic_timeout;
 
-//       如果超过 timeout 没有检测到新的液滴
-//       认为输液完成或阻塞 → ALARM_COMPLETE
-//     ====================================================*/
-//     if (xTaskGetTickCount() - last_drop_tick >= timeout)
-//     {
-//       xAlarmState = ALARM_COMPLETE;
-//     }
-//     else
-//     {
-//       /*------------------------------------------
-//         根据滴速判断报警状态
-//       ------------------------------------------*/
+    if (xCurrentSpeed > 0)
+    {
+      /* 基于当前滴速估算周期 */
+      uint32_t period = 1000 / xCurrentSpeed;  // 单位：ms
 
-//       /* 滴速过快 */
-//       if (xCurrentSpeed > xFlowRateLimits[1])
-//       {
-//         xAlarmState = ALARM_HIGH;
-//       }
+      dynamic_timeout = period * 3;  // 转换为超时，单位：ms
+    }
+    else
+    {
+      dynamic_timeout = BASE_TIMEOUT;
+    }
 
-//       /* 滴速过慢 (但不是0) */
-//       else if (xCurrentSpeed < xFlowRateLimits[0] && xCurrentSpeed > 0.0f)
-//       {
-//         xAlarmState = ALARM_LOW;
-//       }
+    if (dynamic_timeout < BASE_TIMEOUT)
+      dynamic_timeout = BASE_TIMEOUT;
 
-//       /* 正常 */
-//       else
-//       {
-//         xAlarmState = ALARM_NONE;
-//       }
-//     }
+    /* 超时 → COMPLETE */
+    if ((now - last_drop_tick) >= dynamic_timeout)
+    {
+      xAlarmState = ALARM_COMPLETE;
+      xCurrentSpeed = 0;
+    }
+    else
+    {
+      /*====================================================
+        报警判断
+      ====================================================*/
 
-//   }
-
+      if (xCurrentSpeed > xFlowRateLimits[1])
+      {
+        xAlarmState = ALARM_HIGH;
+      }
+      else if (xCurrentSpeed < xFlowRateLimits[0] && xCurrentSpeed > 0)
+      {
+        xAlarmState = ALARM_LOW;
+      }
+      else
+      {
+        xAlarmState = ALARM_NONE;
+      }
+    }
+  }
   /* USER CODE END StartFlowDetectTask */
 }
 
